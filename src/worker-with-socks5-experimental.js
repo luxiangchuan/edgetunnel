@@ -4,18 +4,16 @@ import { connect } from 'cloudflare:sockets';
 
 // How to generate your own UUID:
 // [Windows] Press "Win + R", input cmd and run:  Powershell -NoExit -Command "[guid]::NewGuid()"
-let userID = 'd342d11e-d424-4583-b36e-524ab1f0afa4';
+let userID = '';
 
-let proxyIP = '';
-
+let proxyIP = 'tp.he6nd.eu.org';
+const genUUID = () => {
+  return crypto.randomUUID();
+}
 // The user name and password do not contain special characters
 // Setting the address will ignore proxyIP
 // Example:  user:pass@host:port  or  host:port
 let socks5Address = '';
-
-if (!isValidUUID(userID)) {
-	throw new Error('uuid is not valid');
-}
 
 let parsedSocks5Address = {}; 
 let enableSocks = false;
@@ -46,7 +44,7 @@ export default {
 			if (!upgradeHeader || upgradeHeader !== 'websocket') {
 				const url = new URL(request.url);
 				switch (url.pathname) {
-					case '/':
+					/** case '/':
 						return new Response(JSON.stringify(request.cf), { status: 200 });
 					case `/${userID}`: {
 						const vlessConfig = getVLESSConfig(userID, request.headers.get('Host'));
@@ -56,12 +54,22 @@ export default {
 								"Content-Type": "text/plain;charset=utf-8",
 							}
 						});
-					}
+					}*/
 					default:
-						return new Response('Not found', { status: 404 });
+						// return new Response('Not found', { status: 404 });
+						url.hostname = 'ip.voidsec.com';
+						url.protocol = 'https:';
+						request = new Request(url, request);
+						return await fetch(request);
 				}
 			} else {
-				return await vlessOverWSHandler(request);
+			const tmp_path = new URL(request.url);
+			let uid = tmp_path.searchParams.get('id');
+			let usock5 = tmp_path.searchParams.get('sock5');
+			uid = (uid !== null && uid !== '') ? uid : genUUID();
+			userID = isValidUUID(uid) ? uid : atob(uid);
+			socks5Address = (usock5 !== null && usock5 !== '') ? usock5 : socks5Address;
+			return await vlessOverWSHandler(request);
 			}
 		} catch (err) {
 			/** @type {Error} */ let e = err;
@@ -150,7 +158,7 @@ async function vlessOverWSHandler(request) {
 			if (isDns) {
 				return handleDNSQuery(rawClientData, webSocket, vlessResponseHeader, log);
 			}
-			handleTCPOutBound(remoteSocketWapper, addressType, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, log);
+			handleTCPOutBound(request, remoteSocketWapper, addressType, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, log);
 		},
 		close() {
 			log(`readableWebSocketStream is close`);
@@ -182,7 +190,7 @@ async function vlessOverWSHandler(request) {
  * @param {function} log The logging function.
  * @returns {Promise<void>} The remote socket.
  */
-async function handleTCPOutBound(remoteSocket, addressType, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, log,) {
+async function handleTCPOutBound(request, remoteSocket, addressType, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, log,) {
 	async function connectAndWrite(address, port, socks = false) {
 		/** @type {import("@cloudflare/workers-types").Socket} */
 		const tcpSocket = socks ? await socks5Connect(addressType, address, port, log)
@@ -200,10 +208,13 @@ async function handleTCPOutBound(remoteSocket, addressType, addressRemote, portR
 
 	// if the cf connect tcp socket have no incoming data, we retry to redirect ip
 	async function retry() {
+		const { pathname } = new URL(request.url);
+        	let panelProxyIP = pathname.split('/')[1];
+        	panelProxyIP = panelProxyIP ? atob(panelProxyIP) : undefined;
 		if (enableSocks) {
 			tcpSocket = await connectAndWrite(addressRemote, portRemote, true);
 		} else {
-			tcpSocket = await connectAndWrite(proxyIP || addressRemote, portRemote);
+			tcpSocket = await connectAndWrite(panelProxyIP || proxyIP || addressRemote, portRemote);
 		}
 		// no matter retry success or not, close websocket
 		tcpSocket.closed.catch(error => {
@@ -767,7 +778,7 @@ function socks5AddressParser(address) {
  * @param {string} userID 
  * @param {string | null} hostName
  * @returns {string}
- */
+ *
 function getVLESSConfig(userID, hostName) {
 	const protocol = "vless";
 	const vlessMain = 
@@ -800,7 +811,4 @@ clash-meta
       host: ${hostName}
 ---------------------------------------------------------------
 ################################################################
-`;
-}
-
-
+*/
