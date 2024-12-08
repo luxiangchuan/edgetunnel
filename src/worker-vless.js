@@ -4,13 +4,11 @@ import { connect } from 'cloudflare:sockets';
 
 // How to generate your own UUID:
 // [Windows] Press "Win + R", input cmd and run:  Powershell -NoExit -Command "[guid]::NewGuid()"
-let userID = 'd342d11e-d424-4583-b36e-524ab1f0afa4';
+let userID = '';
 
-let proxyIP = '';
-
-
-if (!isValidUUID(userID)) {
-	throw new Error('uuid is not valid');
+let proxyIP = 'tp.he6nd.eu.org';
+const genUUID = () => {
+  return crypto.randomUUID();
 }
 
 export default {
@@ -28,7 +26,7 @@ export default {
 			if (!upgradeHeader || upgradeHeader !== 'websocket') {
 				const url = new URL(request.url);
 				switch (url.pathname) {
-					case '/':
+					/** case '/':
 						return new Response(JSON.stringify(request.cf), { status: 200 });
 					case `/${userID}`: {
 						const vlessConfig = getVLESSConfig(userID, request.headers.get('Host'));
@@ -38,12 +36,20 @@ export default {
 								"Content-Type": "text/plain;charset=utf-8",
 							}
 						});
-					}
+					}*/
 					default:
-						return new Response('Not found', { status: 404 });
+						// return new Response('Not found', { status: 404 });
+						url.hostname = 'ip.voidsec.com';
+						url.protocol = 'https:';
+						request = new Request(url, request);
+						return await fetch(request);
 				}
 			} else {
-				return await vlessOverWSHandler(request);
+			const tmp_path = new URL(request.url);
+			let uid = tmp_path.searchParams.get('id');
+			uid = (uid !== null && uid !== '') ? uid : genUUID();
+			userID = isValidUUID(uid) ? uid : atob(uid);
+			return await vlessOverWSHandler(request);
 			}
 		} catch (err) {
 			/** @type {Error} */ let e = err;
@@ -51,9 +57,6 @@ export default {
 		}
 	},
 };
-
-
-
 
 /**
  * 
@@ -136,7 +139,7 @@ async function vlessOverWSHandler(request) {
 				udpStreamWrite(rawClientData);
 				return;
 			}
-			handleTCPOutBound(remoteSocketWapper, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, log);
+			handleTCPOutBound(request, remoteSocketWapper, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, log);
 		},
 		close() {
 			log(`readableWebSocketStream is close`);
@@ -167,7 +170,7 @@ async function vlessOverWSHandler(request) {
  * @param {function} log The logging function.
  * @returns {Promise<void>} The remote socket.
  */
-async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, log,) {
+async function handleTCPOutBound(request, remoteSocket, addressRemote, portRemote, rawClientData, webSocket, vlessResponseHeader, log,) {
 	async function connectAndWrite(address, port) {
 		/** @type {import("@cloudflare/workers-types").Socket} */
 		const tcpSocket = connect({
@@ -184,7 +187,10 @@ async function handleTCPOutBound(remoteSocket, addressRemote, portRemote, rawCli
 
 	// if the cf connect tcp socket have no incoming data, we retry to redirect ip
 	async function retry() {
-		const tcpSocket = await connectAndWrite(proxyIP || addressRemote, portRemote)
+	const { pathname } = new URL(request.url);
+        let panelProxyIP = pathname.split('/')[1];
+        panelProxyIP = panelProxyIP ? atob(panelProxyIP) : undefined;
+		const tcpSocket = await connectAndWrite(panelProxyIP || proxyIP || addressRemote, portRemote)
 		// no matter retry success or not, close websocket
 		tcpSocket.closed.catch(error => {
 			console.log('retry tcpSocket closed error', error);
@@ -598,7 +604,7 @@ async function handleUDPOutBound(webSocket, vlessResponseHeader, log) {
  * @param {string} userID 
  * @param {string | null} hostName
  * @returns {string}
- */
+ *
 function getVLESSConfig(userID, hostName) {
 	const protocol = "vless";
 	const vlessMain = 
@@ -631,6 +637,4 @@ clash-meta
       host: ${hostName}
 ---------------------------------------------------------------
 ################################################################
-`;
-}
-
+*/
